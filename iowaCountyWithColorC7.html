@@ -1,0 +1,485 @@
+
+
+<!DOCTYPE html>
+
+<html>
+
+  <head>
+
+  <meta charset="utf-8">
+
+      <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+
+      <title>Iowa Pesticide and Fertilizer Use with google.maps.Data</title>
+
+<style>
+
+      html, body, #map { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+
+        .nicebox {
+          position: absolute;
+          text-align: center;
+          font-family: "Roboto", "Arial", sans-serif;
+          font-size: 13px;
+          z-index: 5;
+          box-shadow: 0 4px 6px -4px #333;
+          padding: 5px 10px;
+          background: rgb(255,255,255);
+          background: linear-gradient(to bottom,rgba(255,255,255,1) 0%,rgba(245,245,245,1) 100%);
+          border: rgb(229, 229, 229) 1px solid;
+        }
+
+        #controls {
+          top: 10px;
+          left: 110px;
+          width: 360px;
+          height: 200px;
+        }
+
+        #data-box {
+          top: 10px;
+          left: 500px;
+          height: 95px;
+          line-height: 45px;
+          display: none;
+        }
+
+        #compound-select {
+          width: 360px;
+          height: 20px;
+        }
+
+        #legend { display: flex; display: -webkit-box; padding-top: 7px }
+
+        .color-key {
+
+          background: linear-gradient(to right,
+            hsl(5, 69%, 54%) 0%,
+            hsl(29, 71%, 51%) 17%,
+            hsl(54, 74%, 47%) 33%,
+            hsl(78, 76%, 44%) 50%,
+            hsl(102, 78%, 41%) 67%,
+            hsl(127, 81%, 37%) 83%,
+            hsl(151, 83%, 34%) 100%);
+         
+          flex: 1;
+          -webkit-box-flex: 1;
+          margin: 0 5px;
+          text-align: left;
+          font-size: 1.0em;
+          line-height: 1.0em;
+
+        }
+
+        #data-value { font-size: 2.0em; font-weight: bold }
+        #data-label { font-size: 2.0em; font-weight: normal; padding-right: 10px; }
+        #data-label:after { content: ':' }
+        #data-caret { margin-left: -5px; display: none; font-size: 14px; width: 14px}
+
+    </style>
+  </head>
+  <body>
+    <div id="controls" class="nicebox">
+      <div>
+     <!-- <select id="compound-select">
+        <option value="https://s-l112.engr.uiowa.edu/student6/outputFromPHP1992Nitrogen.php">1992 Nitrogen</option>
+        <option value="https://s-l112.engr.uiowa.edu/student6/outputFromPHP1992Phosphorus.php">1992 Phosphorus</option>
+      </select> -->
+      </div>
+
+       <div align=left><b>Select Compound:</b>
+        <SELECT name="compound" onChange="processSelectCompound(this.options[this.selectedIndex].value)">
+            <option value="Nitrogen">Nitrogen</option>
+            <option value="Phosphorus">Phosphorus</option>
+            <!--<option value="Nitrogen + Phosphorus">Nitrogen + Phosphorus</option>-->
+        </select>
+       </div>
+
+        <p></p>
+
+        <div align=left><b>Select Years One by One:</b>
+        <SELECT name="years" onChange="processSelectYears(this.options[this.selectedIndex].value)">
+            <option value="2000">2000</option>
+            <option value="2001">2001</option>
+            <option value="2002">2002</option>
+            <option value="2003">2003</option>
+            <option value="2004">2004</option>
+            <option value="2005">2005</option>
+        </select>&nbsp;&nbsp;&nbsp;&nbsp;
+        <INPUT type="button" value="Clear Years" onClick="clearYears()"</INPUT>
+        </div>
+
+      <p></p>
+
+      <div align=left id=yearsElement><b>Selected Years Are:</b>  None</div>
+      <p></p>
+
+      <div align=left id=urlLabelElement><b>Current Url Is:</b>  </div>
+      <div align=left id=urlElement>http://localhost/GetData2.php</div>
+      <p></p>
+
+      <INPUT type="button" value="Execute Query!" onClick="runUrl()"</INPUT>
+      <div id="legend">
+        <div id="census-min">min</div>
+        <div class="color-key"><span id="data-caret">&#x25c6;</span></div>
+        <div id="census-max">max</div>
+      </div>
+    </div>
+    <div id="data-box" class="nicebox">
+      <label id="data-label" for="data-value"></label>
+      <span id="data-value"></span>
+      <br/>
+      <label id="data-label2" for="data-value2"></label>
+      <span id="data-value2"></span>
+    </div>
+
+    <!--we must have a div id="map" for google maps to work!-->
+    <div id="map"></div>
+    <script>
+      var mapStyle = [{
+        'stylers': [{'visibility': 'off'}]
+      }, {
+        'featureType': 'landscape',
+        'elementType': 'geometry',
+        'stylers': [{'visibility': 'on'}, {'color': '#fcfcfc'}]
+      }, {
+        'featureType': 'water',
+        'elementType': 'geometry',
+        'stylers': [{'visibility': 'on'}, {'color': '#bfd4ff'}]
+      }];
+
+      var locAmtObj;
+      var i=0;
+      var map;
+      var maxAmount;
+      var minAmount;
+
+      // Declaring the main object list. Where the main chunk of data will be stored- global scope, meaning that it's declared outside of any functions so it is available to all functions.
+      var locAmtObjList = [];
+
+      var selectedYears = "";
+      // Each time this function is entered a year will be added to the string, separated by a comma.
+      function processSelectYears(selectedValue)
+      {
+          // Don't allow user to select a year more than once.
+          if (selectedYears.includes(selectedValue))
+          {
+              return;
+          }
+          // If there's already a year in the list, add a comma
+          if (selectedYears.length > 0)
+          {
+              selectedYears += ",";
+          }
+          selectedYears += selectedValue;
+          document.getElementById("yearsElement").innerHTML = "<b>Selected Years Are:</b>  " + selectedYears;
+          buildUrl();
+      }
+
+      function clearYears()
+      {
+          selectedYears = "";
+          document.getElementById("yearsElement").innerHTML = "<b>Selected Years Are:</b>  None" + selectedYears;
+          buildUrl();
+      }
+
+      var selectedCompound = "Nitrogen";
+      function processSelectCompound(selectedValue)
+      {
+          selectedCompound = selectedValue;
+          buildUrl();
+      }
+
+      //var url = "https://s-l112.engr.uiowa.edu/student6/GetData.php";
+      var url = "http://localhost/GetData2.php";
+
+      function buildUrl()
+      {
+          //url = "https://s-l112.engr.uiowa.edu/student6/GetData.php";
+          url = "http://localhost/GetData2.php";
+          if (selectedCompound != "all")
+          {
+              url += "?";
+              url += "compound="
+              //url += "description="
+              url += selectedCompound;
+          }
+          if (selectedYears != "")
+          {
+              if (selectedCompound == "all")
+              {
+                  url += "?"
+              }
+              else 
+              {
+                  url += "&";
+              }
+              url += "year=";
+              url += selectedYears;
+          }
+          document.getElementById("urlElement").innerHTML = url;
+      }
+
+      function runUrl()
+      {
+          clearData();
+          loadData(url);
+      }
+
+      // This is the first of my javaScript code that will run, it is called from the google maps api.
+      function initMap() {
+
+        // load the map- creating an object from the google.maps.Map class called map. also known as the constructor, it's in the google api, we're just calling it.
+        // Minimum arguments are center and zoom, others are optional.
+        map = new google.maps.Map(document.getElementById('map'), {
+          center: {lat: 41.66, lng: -91.54},
+          zoom: 8,
+          styles: mapStyle
+        });
+
+        // This sets the callback, styleFeature function is defined below. This function will be run as new features are added to the google map.data object.
+        // The styleFeature function will be called from the google api. 
+        map.data.setStyle(styleFeature);
+        map.data.addListener('mouseover', mouseInToRegion);
+        map.data.addListener('mouseout', mouseOutOfRegion);
+
+        // document is the actual document object model (DOM). It is what the html sits on, and what the javaScript is working on. Everything on the DOM is an element. They all have ids, but you can give them a name id. Everything that you want to interact with should have a human-readable id.
+        /*var selectBox = document.getElementById('compound-select');
+        google.maps.event.addDomListener(selectBox, 'change', function() {
+          clearData();
+          loadData(selectBox.options[selectBox.selectedIndex].value);
+        });*/
+
+        // This is the listener for the click event (when you click on a county). This is where we'll add what happens when a user clicks on a county.
+        map.data.addListener('click', function(event) {
+          event.feature.setProperty('isColorful', true);
+        });
+
+        // This is the listener for the mouseover/hover event (when you hover over a county). This is where we'll add what happens when a user hovers over a county.
+        // Currently changes the county outline.
+        map.data.addListener('mouseover', function(event) {
+          map.data.revertStyle();
+          map.data.overrideStyle(event.feature, {strokeWeight: 8});
+        });
+        //loadData("https://s-l112.engr.uiowa.edu/student6/outputFromPHP1992Nitrogen.php");
+        //loadData("https://s-l112.engr.uiowa.edu/student6/GetData.php?compound=Nitrogen&year=1987");
+        //loadData("http://localhost/GetData2.php?compound=Nitrogen&year=1987"); 
+        loadData("http://localhost/GetData2.php"); 
+        //?nutrient_type_id=1&year=1987");        
+
+      }
+
+      // This is at the bottom because it puts the data on the page as it loops and we want to keep it out of the way for debugging.
+      function loadData(dataSiteURL) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', dataSiteURL);
+
+        // Setting up function as an event handler to fire once the data is loaded (once the response is back from the request).
+        xhr.onload = function() {
+          locAmtObjList = [];
+          i = 0;
+          var compoundData = [];
+          compoundData = JSON.parse(xhr.responseText);
+
+          var type=typeof compoundData;
+          compoundData.forEach(function(row) {
+            
+            var locAmtObj = new Object();
+            locAmtObj.fips_co = row[0];
+            locAmtObj.amount = parseFloat(row[1]);
+            locAmtObj.co = row[2];
+
+            locAmtObjList[i] = locAmtObj;
+            i++;
+          })
+
+          loadMapShapes();
+
+          maxAmount = getMaxAmount();
+          minAmount = getMinAmount();
+
+          // This is where we put the min and max values on the colored legend.
+          document.getElementById('census-min').textContent =
+              minAmount.toLocaleString('en');
+          document.getElementById('census-max').textContent =
+              maxAmount.toLocaleString('en');
+        }
+        
+        // This is when the http request actually gets sent. The request is a get for a URL defined above.
+        xhr.send();
+      }
+
+      // This is the callback that is called from the google api as features are added (and maybe changed?).
+      function styleFeature(feature) {
+        
+        var low = [5, 69, 54];  // color of smallest datum
+        var high = [151, 83, 34];   // color of largest datum
+        var color = [];
+        var showRow = true;
+        var outlineWeight = 0.5, zIndex = 1;
+        
+        if (feature.getProperty('state') === 'hover') {
+          outlineWeight = zIndex = 2;
+        }
+
+        var fipsCo = feature.getProperty('fips_co');
+        var amount = getAmountByFipsCo(fipsCo);
+       
+        if (amount != 0)
+        {
+          maxAmount = getMaxAmount();
+          minAmount = getMinAmount();
+          var delta = (amount - minAmount) /
+              (maxAmount - minAmount);
+
+          for (var i = 0; i < 3; i++) {
+            // calculate an integer color based on the delta
+            // Finds where your color is on all your range of data
+            color[i] = (high[i] - low[i]) * delta + low[i];
+          }
+
+        }
+
+        // This is the color that is shown if the program doesn't find an amount because a county isn't in the data, it's kind of orange right now.
+        // Probably want to change this color at some point.
+        else 
+        {
+          color[0] = 28;
+          color[1] = 71;
+          color[2] = 50;
+        }
+
+        return {
+          strokeWeight: outlineWeight,
+          strokeColor: '#fff',
+          zIndex: zIndex,
+          fillColor: 'hsl(' + color[0] + ',' + color[1] + '%,' + color[2] + '%)',
+          fillOpacity: 0.75,
+          visible: showRow
+        };
+      }
+
+      // Loads the county data, which is saved in a separate .js file in the same directory (in this case). 
+      // Setting the property id as the fips_co number, so if you have to do a look-up the id is going to be the fips_co number.
+      function loadMapShapes() {
+        // load US state outline polygons from a GeoJson file
+
+        //map.data.loadGeoJson('http://localhost/jsoncounties-IA.min.js');
+
+        //var countyLayer = new google.maps.Data();
+        //countyLayer.loadGeoJson('http://localhost/iowaCountiesGit.geojson', { idPropertyName: 'geoid' });
+        map.data.loadGeoJson('http://localhost/iowaCountiesGitFormatted2.js', { idPropertyName: 'fips_co' });
+      }
+
+      // Goes through the array of objects and finds the amount from the fips_co number
+      function getAmountByFipsCo(fipsCo)
+      {
+        for (let locAmtObj of locAmtObjList)
+        {
+          if (locAmtObj == undefined)
+          {
+            return (0);
+          }
+          if (locAmtObj.fips_co == fipsCo)
+          {
+            return (locAmtObj.amount);
+          }        
+        }
+        return(0);
+      }
+
+      function getCoByFipsCo(fipsCo)
+      {
+        for (let locAmtObj of locAmtObjList)
+        {
+          if (locAmtObj == undefined)
+          {
+            return (0);
+          }
+          if (locAmtObj.fips_co == fipsCo)
+          {
+            return (locAmtObj.co);
+          }        
+        }
+        return(0);
+      }
+
+      // Goes through array of objects and finds maximum
+      function getMaxAmount()
+      {
+        var maxAmount = 0;
+        for (let locAmtObj of locAmtObjList)
+        {
+          if (parseFloat(locAmtObj.amount) > parseFloat(maxAmount))
+          {
+            maxAmount = locAmtObj.amount;
+          }
+        }
+        return(maxAmount);
+      }
+
+      // Goes through array of objects and finds minimum
+      function getMinAmount()
+      {
+        var minAmount = 9999999;
+        for (let locAmtObj of locAmtObjList)
+        {
+          if (parseFloat(locAmtObj.amount) < parseFloat(minAmount))
+          {
+            minAmount = locAmtObj.amount;
+          }
+        }
+        return(minAmount);
+      }
+
+      function clearData() {
+        censusMin = Number.MAX_VALUE;
+        censusMax = -Number.MAX_VALUE;
+        map.data.forEach(function(row) {
+          row.setProperty('census_variable', undefined);
+        });
+        document.getElementById('data-box').style.display = 'none';
+        document.getElementById('data-caret').style.display = 'none';
+      }
+
+      // This is the event handler, it is a function that I set up so that when the "event" occurs, this function runs. In this case the "event" is hovering the mouse over a county.
+      function mouseInToRegion(e) {
+
+        // set the hover state so the setStyle function can change the border
+        e.feature.setProperty('state', 'hover');
+        var fipsCo = e.feature.getProperty('fips_co');
+
+        var amount = getAmountByFipsCo(fipsCo);
+        var co = getCoByFipsCo(fipsCo);
+        var percent = (amount - minAmount)/(maxAmount - minAmount) * 100;
+
+        // update the label
+
+        document.getElementById('data-label').textContent = co;
+        document.getElementById('data-label2').textContent = 'Fips County Code:';
+        document.getElementById('data-value2').textContent = fipsCo;
+        document.getElementById('data-value').textContent = amount.toLocaleString('en') + ' tons';
+        document.getElementById('data-box').style.display = 'block';
+        document.getElementById('data-caret').style.display = 'block';
+        document.getElementById('data-caret').style.paddingLeft = percent + '%';
+      }
+
+      /**
+       * Responds to the mouse-out event on a map shape (state).
+       *
+       * @param {?google.maps.MouseEvent} e
+       */
+      // This is the event handler for when the user moves the mouse pointer out of a region.
+      function mouseOutOfRegion(e) {
+        // reset the hover state, returning the border to normal
+        e.feature.setProperty('state', 'normal');
+      }
+
+    </script>
+    <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBZJOCxq2ZLUZ7Jetz7BoZklo2VLX1YGOQ&callback=initMap">
+        //src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBNCNBr9PSfJ-yTPA63yQVU-Oh7ZJ9MXPk&callback=initMap"
+        // Telling the google maps api what my initialization function is (initMap) so that google maps can call it.
+    </script>
+  </body>
+</html>
