@@ -60,8 +60,8 @@
 
 	// connect to database 
 	//$database = 'host=s-l112.engr.uiowa.edu dbname=postgres user=student6 password=engr-2018-6'; 
-	$serverName = "DESKTOP-8D2EJPT"; //serverName\instanceName
-	$connectionInfo = array( "Database"=>"Sandbox", "UID"=>"sa", "PWD"=>"pikachu");
+	$serverName = "[server name]"; //serverName\instanceName
+	$connectionInfo = array( "Database"=>"[database name]", "UID"=>"sa", "PWD"=>"[password]");
 	$conn = sqlsrv_connect( $serverName, $connectionInfo);
 	//$connection = pg_connect($database);
    	if(!$conn) 
